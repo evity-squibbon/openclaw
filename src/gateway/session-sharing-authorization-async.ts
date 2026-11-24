@@ -3,23 +3,24 @@ import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/inde
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
 import {
   assertAdmittedRunOperatorAuthority,
-  createAdmittedRunOperatorAuthority,
   type AdmittedRunOperatorAuthority,
 } from "../agents/admitted-run-context.js";
 import { AgentSelectionRequiredError } from "../agents/agent-scope-config.js";
+import { resolveAgentWorkspaceDir } from "../agents/agent-scope.js";
 import { isAbortRequestText } from "../auto-reply/reply/abort-primitives.js";
 import {
   retainPreparedSessionSharingFacts,
   projectSessionSharingEntry,
 } from "../config/sessions/session-accessor.sqlite-entry-cache.js";
 import { SessionCanonicalKeyMigrationRequiredError } from "../config/sessions/session-canonical-key-error.js";
+import { captureSessionEntryView } from "../config/sessions/session-entry-view.js";
+import { matchesSessionParticipationSource } from "../config/sessions/session-participation-source.js";
 import {
   bindSynchronousSessionSource,
   composeSessionSourceAssertion,
   releaseSessionSourceAuthorities,
 } from "../config/sessions/session-source-authority.js";
 import { sameSessionTranscriptStorePath } from "../config/sessions/transcript-store-identity.js";
-import type { SessionEntry } from "../config/sessions/types.js";
 import { observeDiagnosticsTimelinePhases } from "../infra/diagnostics-timeline.js";
 import { readDatabasePathIdentitySync } from "../infra/sqlite-worker-identity.js";
 import { resolveMissingOperatorScope } from "../shared/operator-scope-compat.js";
@@ -34,11 +35,12 @@ import { errorShapeFromError } from "./error-shape.js";
 import { resolveGatewayOperatorAccessAuthority } from "./operator-access-policy.js";
 import { isOperatorRoleEnforcedFor, operatorRoleSubject } from "./operator-role-enforcement.js";
 import { resolveOperatorRolePolicyForAssignment } from "./operator-role-policy.js";
-import { prepareGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/shared-types.js";
+import { prepareSessionDelegatedOperatorAuthority } from "./session-delegated-operator-source.js";
 import { sessionMethodDatabaseAdmission, isSessionTargetMethod } from "./session-method-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import { restoreSessionOperatorSource } from "./session-operator-sources.js";
+import { resolveSessionSystemTurnProfileId } from "./session-principal-run-authority.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
@@ -60,65 +62,11 @@ import {
 import { resolveSessionMutationAuthorization } from "./session-sharing.js";
 import { prepareTalkSessionTarget } from "./talk/session-target.js";
 
-/** An explicit non-human assignment must not fall back to a former human creator. */
-export function resolveSessionSystemTurnProfileId(
-  entry: Pick<SessionEntry, "owner" | "createdActor"> | undefined,
-): string | undefined {
-  const actor = entry?.owner
-    ? entry.owner.actor
-    : entry?.createdActor?.type === "human" && entry.createdActor.source === "profile"
-      ? entry.createdActor
-      : undefined;
-  if (actor?.type !== "human") {
-    return undefined;
-  }
-  const profileId = actor.id?.trim();
-  if (!profileId) {
-    throw new Error("Session owner has no current profile identity");
-  }
-  return profileId;
-}
-
-/** Admit a new input as a recorded person using only that person's current grants. */
-export async function prepareSessionPrincipalRunAuthority(
-  params: Parameters<typeof prepareSessionPrincipalRunAccess>[0],
-): Promise<{ authority: AdmittedRunOperatorAuthority; release: () => void }> {
-  const source = await prepareSessionPrincipalRunAccess(params);
-  const original = source.recordedOperatorAuthority;
-  if (original) {
-    return {
-      authority: createAdmittedRunOperatorAuthority({
-        ...original,
-        signal: source.signal,
-      }),
-      release: source.release,
-    };
-  }
-  let admitted: Awaited<ReturnType<typeof prepareGatewayOperatorRunAuthority>>;
-  try {
-    admitted = await prepareGatewayOperatorRunAuthority({
-      client: source.client,
-      context: params.context,
-      sourceAuthority: source,
-    });
-    if (!admitted) {
-      throw new Error("Session principal has no current run authority.");
-    }
-    return admitted;
-  } catch (error) {
-    if (admitted) {
-      admitted.release();
-    } else {
-      source.release();
-    }
-    throw error;
-  }
-}
-
 /** Resolve a recorded person against current grants and an existing exact session. */
-async function prepareSessionPrincipalRunAccess(params: {
+export async function prepareSessionPrincipalRunAccess(params: {
   context: GatewayRequestContext;
   profileId: string;
+  participationCeiling?: import("../agents/participation-ceiling.js").ParticipationCeiling;
   agentId: string;
   sessionKey: string;
   sessionId: string;
@@ -166,7 +114,17 @@ async function prepareSessionPrincipalRunAccess(params: {
         operatorRoleSubject(profile),
       )?.scopes;
     }
-    if (!scopes || resolveMissingOperatorScope(["operator.sessions.write"], scopes) !== null) {
+    const scope = params.participationCeiling
+      ? "operator.sessions.read"
+      : "operator.sessions.write";
+    if (
+      params.participationCeiling &&
+      (params.participationCeiling.profileId !== params.profileId ||
+        params.participationCeiling.sessionKey !== params.sessionKey)
+    ) {
+      throw new Error("Participation source does not match its original target.");
+    }
+    if (!scopes || resolveMissingOperatorScope([scope], scopes) !== null) {
       throw new Error("Session principal has no current run authority.");
     }
     return scopes;
@@ -233,17 +191,27 @@ async function prepareSessionPrincipalRunAccess(params: {
       client,
       context: params.context,
       method: "chat.send",
+      ...(params.participationCeiling ? { participationRequired: true as const } : {}),
       sessionScope:
-        original && resolveMissingOperatorScope(["operator.write"], scopes) !== null
+        original &&
+        !params.participationCeiling &&
+        resolveMissingOperatorScope(["operator.write"], scopes) !== null
           ? "operator.sessions.write"
           : undefined,
       requestParams: { agentId: params.agentId, sessionKey: params.sessionKey },
       assertInvocationCurrent: assertPrincipalCurrent,
       assertPrincipalTargetCurrent: (target) => {
+        const origin = params.participationCeiling?.source;
         if (
           !target ||
           target.agentId !== params.agentId ||
           target.entry.archivedAt !== undefined ||
+          (origin &&
+            !matchesSessionParticipationSource(
+              { sessionKey: params.sessionKey, source: origin },
+              target,
+              resolveAgentWorkspaceDir(getConfig(), params.agentId),
+            )) ||
           (params.sessionPrincipal &&
             resolveSessionSystemTurnProfileId(target.entry) !== params.profileId) ||
           (params.storePath !== undefined &&
@@ -258,7 +226,10 @@ async function prepareSessionPrincipalRunAccess(params: {
     if (resolved.error) {
       throw new Error(resolved.error.message);
     }
-    if (!sharing || sharing.admittedTarget?.sessionId !== params.sessionId) {
+    if (
+      !sharing ||
+      !captureSessionEntryView(params, ["sessionId"]).matches(sharing.admittedTarget)
+    ) {
       throw new Error("Session is unavailable for this principal.");
     }
     const sharingSource = sharing.assertAdmittedInputCurrent ?? sharing.assertCurrent;
@@ -273,13 +244,18 @@ async function prepareSessionPrincipalRunAccess(params: {
     return {
       client,
       assertCurrent,
-      signal: recorded?.authority.signal,
+      signal: AbortSignal.any(
+        [recorded?.authority.signal, sharing.participationSignal].filter(
+          (signal): signal is AbortSignal => signal !== undefined,
+        ),
+      ),
       gatewayAccessGrant: original
         ? original.gatewayAccessGrant
         : access
           ? access.gatewayAccessGrant
           : null,
       recordedOperatorAuthority: original,
+      participationCeiling: sharing.participationCeiling,
       release,
     };
   } catch (error) {
@@ -375,6 +351,7 @@ export async function resolveSessionMutationAuthorizationAsync(
     }
   };
   let references = 0;
+  let childParticipation: Awaited<ReturnType<typeof prepareSessionDelegatedOperatorAuthority>>;
   const retain = () => {
     if (!active) {
       throw new Error("Session authorization has been released");
@@ -437,6 +414,48 @@ export async function resolveSessionMutationAuthorizationAsync(
       });
       reads.push(retained);
       const initialFacts = retained.readCurrent(cfg);
+      if (!initialFacts.target && (params.method === "chat.send" || params.method === "agent")) {
+        const { getSubagentRunsForChildSession } =
+          await import("../agents/subagents/registry/subagent-registry-memory.js");
+        // An indexed custody requirement can refuse recreation, never reconstruct authority.
+        for (const run of getSubagentRunsForChildSession(target.sessionKey, input.agentId)) {
+          if (run.requiresCompletionAuthority) {
+            throw new Error("Constrained child requires its original session source.");
+          }
+        }
+      }
+      const inherited = params.client?.internal?.operatorRunAuthority;
+      if (
+        (params.method === "chat.send" || params.method === "agent") &&
+        initialFacts.target?.entry.delegatedOperatorSource
+      ) {
+        childParticipation = await prepareSessionDelegatedOperatorAuthority({
+          context: params.context,
+          agentId: input.agentId,
+          entry: initialFacts.target.entry,
+          authority: inherited,
+          assertCurrent: params.assertInvocationCurrent,
+        });
+        if (childParticipation) {
+          creationReleases.push(childParticipation.release);
+        }
+      }
+      const participantRunAuthority =
+        params.method === "chat.send" || params.method === "agent"
+          ? (childParticipation?.authority ??
+            (inherited?.participationCeiling ? inherited : undefined))
+          : undefined;
+      if (participantRunAuthority) {
+        params = {
+          ...params,
+          participantRunAuthority,
+          participationRequired: undefined,
+          assertInvocationCurrent: composeSessionSourceAssertion([
+            params.assertInvocationCurrent,
+            () => participantRunAuthority.signal?.throwIfAborted(),
+          ]),
+        };
+      }
       const readCurrent = () => {
         try {
           return retained.readCurrent(params.context.getRuntimeConfig());
@@ -510,6 +529,10 @@ export async function resolveSessionMutationAuthorizationAsync(
       return result;
     }
     const authorization = result.authorization;
+    if (childParticipation) {
+      authorization.participationCeiling = childParticipation.authority.participationCeiling;
+      authorization.participationSignal = childParticipation.authority.signal;
+    }
     const prepareWorkerGrant = authorization.prepareWorkerGrant;
     if (prepareWorkerGrant) {
       authorization.prepareWorkerGrant = async (source) => {
@@ -539,9 +562,12 @@ export async function resolveSessionMutationAuthorizationAsync(
         },
         retain,
         retainForRun: () => ({
-          // Published facts stay live without repeating history preparation or transport admission.
-          assertCurrent: () =>
-            (authorization.assertAdmittedInputCurrent ?? authorization.assertCurrent)(),
+          signal: authorization.participationSignal,
+          participationAuthority: childParticipation?.authority,
+          assertCurrent: () => {
+            authorization.participationSignal?.throwIfAborted();
+            (authorization.assertAdmittedInputCurrent ?? authorization.assertCurrent)();
+          },
           release: retain(),
         }),
         release: () => {

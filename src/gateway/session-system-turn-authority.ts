@@ -4,10 +4,11 @@ import { getSessionControllerEntryForOperation } from "../sessions/session-contr
 import type { QueuedOperatorRecoverySource } from "./operator-run-recovery-source.codec.js";
 import { captureQueuedOperatorRecoverySource } from "./operator-run-recovery-source.js";
 import { restoreGatewayQueuedOperatorRecovery } from "./operator-run-recovery.js";
+import { prepareSessionDelegatedOperatorAuthority } from "./session-delegated-operator-source.js";
 import {
   prepareSessionPrincipalRunAuthority,
   resolveSessionSystemTurnProfileId,
-} from "./session-sharing-authorization-async.js";
+} from "./session-principal-run-authority.js";
 
 /** Capture the interrupted execution's source, never a later steering participant. */
 export function captureSessionRestartOperatorSource(
@@ -53,26 +54,45 @@ export async function prepareSessionSystemTurnAuthority(
   if (entry?.sessionId !== params.sessionId) {
     throw new Error("System turn session is unavailable or has changed.");
   }
-  if (params.operatorSource) {
-    const restored = await restoreGatewayQueuedOperatorRecovery({
-      agentId: params.agentId,
-      source: params.operatorSource,
+  const restored = params.operatorSource
+    ? await restoreGatewayQueuedOperatorRecovery({
+        agentId: params.agentId,
+        source: params.operatorSource,
+        context: params.context,
+        assertCurrent: () => params.assertCurrent?.(),
+      })
+    : undefined;
+  try {
+    const delegated = await prepareSessionDelegatedOperatorAuthority({
       context: params.context,
-      assertCurrent: () => params.assertCurrent?.(),
+      agentId: params.agentId,
+      entry,
+      authority: restored?.authority,
+      assertCurrent: params.assertCurrent,
     });
-    try {
+    if (delegated) {
+      return delegated;
+    }
+    if (restored?.authority.participationCeiling) {
+      const release = restored.authority.retain?.();
+      if (!release) {
+        throw new Error("Participant restart requires retained authority.");
+      }
+      return { authority: restored.authority, release };
+    }
+    if (restored) {
       return await prepareSessionPrincipalRunAuthority({
         ...params,
         profileId: restored.authority.profileId,
         recoveredOperatorAuthority: restored.authority,
         preserveRecordedSource: true,
       });
-    } finally {
-      restored.release();
     }
+    const profileId = resolveSessionSystemTurnProfileId(entry);
+    return profileId
+      ? await prepareSessionPrincipalRunAuthority({ ...params, profileId, sessionPrincipal: true })
+      : undefined;
+  } finally {
+    restored?.release();
   }
-  const profileId = resolveSessionSystemTurnProfileId(entry);
-  return profileId
-    ? prepareSessionPrincipalRunAuthority({ ...params, profileId, sessionPrincipal: true })
-    : undefined;
 }
