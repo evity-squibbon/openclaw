@@ -42,6 +42,7 @@ import { prepareSessionDelegatedOperatorAuthority } from "./session-delegated-op
 import { sessionMethodDatabaseAdmission, isSessionTargetMethod } from "./session-method-policy.js";
 import { SessionMutationAuthorizationChangedError } from "./session-mutation-authorization-error.js";
 import { restoreSessionOperatorSource } from "./session-operator-sources.js";
+import { bindSessionParticipationSource } from "./session-participation-authorization.js";
 import { resolveSessionSystemTurnProfileId } from "./session-principal-run-authority.js";
 import { resolveRequestedSessionAgentId } from "./session-request-agent.js";
 import { withReadySessionRows } from "./session-row-prepared-read.js";
@@ -350,7 +351,14 @@ export async function resolveSessionMutationAuthorizationAsync(
       ]
     : [
         ...resolveDirectSessionTargets(params.method, params.requestParams),
-        ...(resolveSessionMutationTargets(params) ?? []),
+        // Discovery precedes profile preparation; the final check resolves the role ceiling.
+        ...(resolveSessionMutationTargets({
+          ...params,
+          ...(params.method === "session.typing" &&
+          params.sessionScope === "operator.sessions.write"
+            ? { participationRequired: true as const }
+            : {}),
+        }) ?? []),
       ];
   if (targets.length === 0 && !params.sessionScope && !isSessionTargetMethod(params.method)) {
     return resolveSessionMutationAuthorization(params);
@@ -368,6 +376,7 @@ export async function resolveSessionMutationAuthorizationAsync(
       : undefined;
   // Match the chat handler's command interpretation: cancellation must not join startup.
   const stopCommand =
+    !params.participationRequired &&
     chatParams?.suppressCommandInterpretation !== true &&
     chatParams?.intent === undefined &&
     chatMessage?.ok === true &&
@@ -525,6 +534,7 @@ export async function resolveSessionMutationAuthorizationAsync(
             storageTarget: retained.storageTarget,
             members: [],
             isMember: (identityId: string) => facts.membership.has(identityId),
+            memberAccess: (identityId: string) => facts.memberAccess?.[identityId],
             assertCurrent: () => {
               readCurrent();
             },
@@ -571,6 +581,9 @@ export async function resolveSessionMutationAuthorizationAsync(
       authorization.participationCeiling = childParticipation.authority.participationCeiling;
       authorization.participationSignal = childParticipation.authority.signal;
     }
+    if (authorization.release) {
+      creationReleases.push(authorization.release);
+    }
     const prepareWorkerGrant = authorization.prepareWorkerGrant;
     if (prepareWorkerGrant) {
       authorization.prepareWorkerGrant = async (source) => {
@@ -601,6 +614,12 @@ export async function resolveSessionMutationAuthorizationAsync(
         retain,
         retainForRun: () => ({
           signal: authorization.participationSignal,
+          participationCeiling: bindSessionParticipationSource(
+            authorization.participationCeiling,
+            () => preparedTargets[0]?.read().target,
+            params.context.getRuntimeConfig,
+            authorization.assertAdmittedInputCurrent ?? authorization.assertCurrent,
+          ),
           participationAuthority: childParticipation?.authority,
           assertCurrent: () => {
             authorization.participationSignal?.throwIfAborted();
@@ -656,6 +675,7 @@ export async function resolveSessionMutationAuthorizationAsync(
               },
               members: [],
               isMember: (identityId: string) => current.membership.has(identityId),
+              memberAccess: (identityId: string) => current.memberAccess?.[identityId],
               assertCurrent: () => {
                 if (!active || !retained.readCurrent(readScope)) {
                   throw sessionMutationTargetChanged(params.method, created.sessionKey);
