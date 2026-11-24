@@ -21,6 +21,7 @@ import { findChatSubmissionMessage } from "../../lib/chat/history-message-identi
 import { formatUiErrorDetails } from "../../lib/format-error.ts";
 import { registerEnglishCatalog, t } from "../../lib/reactive/i18n.ts";
 import { ToastNotice } from "../../lib/toast-notice.tsx";
+import { EXPECTED_CHAT_REFUSAL } from "./chat-error-state.ts";
 import { isChatSendReconnecting } from "./chat-send-presentation.ts";
 import type { ChatComposerNoticesProps, ChatViewNoticesProps } from "./chat-view-notices.tsx";
 import { ChatGPTUsageLimit } from "./chatgpt-usage-limit.tsx";
@@ -303,6 +304,7 @@ function ChatErrorNotice(props: {
   detail?: unknown;
   action?: JSX.Element;
   displayError?: string;
+  reportIssue?: boolean;
   tone?: "danger" | "warn";
   summary?: string;
   onDismiss?: () => void;
@@ -314,11 +316,8 @@ function ChatErrorNotice(props: {
   // Keep an expanded diagnostic stable across unrelated session refreshes.
   const toast = createMemo(
     () => {
-      const message =
-        props.summary ??
-        (props.detail === undefined
-          ? displayError().trim().split(/\r?\n/u)[0]?.trim() || props.error
-          : props.error);
+      const summary = props.detail === undefined ? displayError() : props.error;
+      const message = props.summary ?? (summary.trim().split(/\r?\n/u)[0]?.trim() || props.error);
       // Offer details only when they add something beyond the visible message.
       const diagnostic = displayError().trim();
       return {
@@ -341,7 +340,7 @@ function ChatErrorNotice(props: {
   const actions = (
     <div class="stack chat-error__actions">
       {props.action}
-      <ReportIssueLink />
+      {props.reportIssue !== false ? <ReportIssueLink /> : undefined}
     </div>
   );
   return (
@@ -373,7 +372,8 @@ export function ChatTopbarNoticesContent(props: ChatViewNoticesProps) {
         {(error) => (
           <ChatErrorNotice
             error={error()}
-            detail={props.errorDetail}
+            detail={props.errorDetail === EXPECTED_CHAT_REFUSAL ? undefined : props.errorDetail}
+            reportIssue={props.errorDetail !== EXPECTED_CHAT_REFUSAL}
             onDismiss={props.onDismissError}
           />
         )}
