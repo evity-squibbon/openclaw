@@ -29,7 +29,7 @@ import {
 import { createOperatorClient } from "./server-plugin-in-process-dispatch.test-support.js";
 import { recordSessionOperatorSource } from "./session-operator-sources.js";
 import { triggerSessionPatchHook } from "./session-patch-hooks.js";
-import { prepareSessionPrincipalRunAuthority } from "./session-principal-run-authority.js";
+import { prepareSessionPrincipalRunAuthority } from "./session-sharing-authorization-async.js";
 
 const log = { warn: (message: string) => expect.fail(message) };
 

@@ -54,8 +54,8 @@ import {
 import { recoveryFixture } from "./operator-run-recovery.test-support.js";
 import { createGatewayRequestContext } from "./server-request-context.js";
 import { makeContextParams } from "./server-request-context.test-support.js";
-import { prepareSessionPrincipalRunAuthority } from "./session-principal-run-authority.js";
 import { getSessionRowProjection } from "./session-row-projection-access.js";
+import { prepareSessionPrincipalRunAuthority } from "./session-sharing-authorization-async.js";
 // mock-isolation: Only model execution and the final child launch are synthetic.
 vi.mock("../agents/embedded-agent-runner/run.js", () => ({ runEmbeddedAgent: vi.fn() }));
 const spawn = vi.hoisted(() => vi.fn());
