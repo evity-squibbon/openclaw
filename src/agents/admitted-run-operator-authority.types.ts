@@ -42,6 +42,8 @@ export type AdmittedRunOperatorAuthority = Readonly<{
   scopes: readonly string[];
   /** Command-owner decision fixed at this run's start. */
   requesterOwner?: boolean;
+  /** Live original-source restriction on a participant child or completion turn. */
+  participationCeiling?: import("./participation-ceiling.js").BoundParticipationCeiling;
   /** Original access dependency; null is proven independent, undefined is unclassified. */
   gatewayAccessGrant?: GatewayAccessGrantRef | null;
   signal?: AbortSignal;
@@ -65,4 +67,13 @@ export type AdmittedRunOperatorAuthority = Readonly<{
     }>;
   }>;
   modelPolicy?: PreparedOperatorModelPolicy;
+}>;
+
+/** Additional request lifetime; never replaces the authenticated access grant. */
+export type AdmittedRunInvocationAuthority = Readonly<{
+  participationAuthority?: AdmittedRunOperatorAuthority;
+  participationCeiling?: import("./participation-ceiling.js").BoundParticipationCeiling;
+  assertCurrent: () => void;
+  signal?: AbortSignal;
+  release?: () => void;
 }>;
