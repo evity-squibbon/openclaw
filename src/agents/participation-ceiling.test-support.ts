@@ -1,5 +1,6 @@
 import { expectDefined } from "@openclaw/normalization-core";
 import { onTestFinished } from "vitest";
+import { decideTurnGrant } from "../gateway/operator-admission.js";
 import { normalizeGatewayOperatorRecoverySnapshot } from "../gateway/operator-run-recovery-source.codec.js";
 import {
   createAdmittedRunOperatorAuthority,
@@ -27,6 +28,7 @@ export function createParticipationTestAuthority(
     canonicalIdentity: null,
     profileId: ceiling.profileId,
     scopes: [...scopes],
+    grant: decideTurnGrant([...scopes]),
     participationCeiling: bound,
     recoverySnapshot: expectDefined(
       normalizeGatewayOperatorRecoverySnapshot({

@@ -6,10 +6,8 @@ import { upsertSessionEntryCore } from "../config/sessions/session-accessor.js";
 import type { AgentSandboxConfig } from "../config/types.agents-shared.js";
 import { resolveExecModePolicy } from "../infra/exec-approvals-core.js";
 import { withOpenClawTestState } from "../test-utils/openclaw-test-state.js";
-import {
-  createAdmittedRunOperatorAuthority,
-  prepareSystemAgentRunAdmission,
-} from "./admitted-run-context.js";
+import { prepareSystemAgentRunAdmission } from "./admitted-run-context.js";
+import { createTestOperatorAuthority } from "./admitted-run-context.test-support.js";
 import { projectAgentToolsExecPolicy } from "./agent-tools.execution-policy.js";
 import { resolveExecToolConfig } from "./lazy-exec-tool.js";
 import { prepareParticipationTestRun } from "./participation-ceiling.test-support.js";
@@ -136,7 +134,7 @@ it("uses only admitted participation authority for the original root and permiss
   await withOpenClawTestState({ label: "admitted-participation-workspace" }, async (state) => {
     const root = state.path("original-root");
     await fs.mkdir(root);
-    const authority = createAdmittedRunOperatorAuthority({
+    const authority = createTestOperatorAuthority({
       canonicalIdentity: null,
       profileId: "guest",
       scopes: [],

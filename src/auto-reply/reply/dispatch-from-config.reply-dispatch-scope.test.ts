@@ -15,7 +15,6 @@ import {
 import { expectDefined } from "@openclaw/normalization-core";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { awaitGateBeforeSettlement, createDeferred } from "../../../test/helpers/promise.js";
-import { createAdmittedRunOperatorAuthority } from "../../agents/admitted-run-context.js";
 import { createTestOperatorAuthority } from "../../agents/admitted-run-context.test-support.js";
 import { clearAgentHarnesses } from "../../agents/harness/registry.js";
 import { PlatformMessageNotDispatchedError } from "../../infra/outbound/deliver-types.js";
@@ -270,7 +269,7 @@ describe("dispatchReplyFromConfig reply hook scope", () => {
         replyResolver,
         replyOptions: participation
           ? {
-              operatorAuthority: createAdmittedRunOperatorAuthority({
+              operatorAuthority: createTestOperatorAuthority({
                 canonicalIdentity: null,
                 profileId: "participant",
                 scopes: [],

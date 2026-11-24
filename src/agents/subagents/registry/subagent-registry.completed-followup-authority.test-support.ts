@@ -1,6 +1,7 @@
 import { expectDefined } from "@openclaw/normalization-core/expect";
 import { expect, it, vi } from "vitest";
 import { setRuntimeConfigSnapshot } from "../../../config/runtime-snapshot.js";
+import { decideTurnGrant } from "../../../gateway/operator-admission.js";
 import * as operatorCapture from "../../../gateway/operator-run-authority.js";
 import {
   createContext,
@@ -92,6 +93,7 @@ export function registerCompletedFollowupAuthorityTests({
           canonicalIdentity: null,
           profileId: "participant",
           scopes: ["operator.write"],
+          grant: decideTurnGrant(["operator.write"]),
           participationCeiling: restriction,
           source,
           invocation,

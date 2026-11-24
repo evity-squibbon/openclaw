@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
+import { createTestOperatorAuthority } from "../agents/admitted-run-context.test-support.js";
 import {
   resolveGatewayToolOperatorSelection,
   withGatewayPersonalToolUser,
@@ -11,7 +11,7 @@ import { createContext } from "./server-plugin-in-process-dispatch.test-support.
 
 it("retains participant identity for delegated reads but refuses authority mutations before dispatch", async () => {
   const profileId = "participant-source";
-  const authority = createAdmittedRunOperatorAuthority({
+  const authority = createTestOperatorAuthority({
     canonicalIdentity: null,
     profileId,
     scopes: ["operator.admin"],
@@ -84,7 +84,7 @@ it("retains participant identity for delegated reads but refuses authority mutat
     const selectedAuthority =
       selected === profileId
         ? authority
-        : createAdmittedRunOperatorAuthority({
+        : createTestOperatorAuthority({
             canonicalIdentity: null,
             profileId: selected,
             scopes: ["operator.admin"],

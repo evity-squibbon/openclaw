@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
+import { createTestOperatorAuthority } from "../agents/admitted-run-context.test-support.js";
 import type { BoundParticipationCeiling } from "../agents/participation-ceiling.js";
 import { prepareUserProfileIdentity } from "../state/user-profile-list.js";
 import { captureGatewayOperatorRecoverySnapshot } from "./operator-run-recovery-source.js";
@@ -24,7 +25,7 @@ it("captures a principal-ingress participant with the same strict durable dialec
   withRecovery(async (fixture, _root, profile) => {
     const identity = await prepareUserProfileIdentity(profile.id);
     try {
-      const authority = createAdmittedRunOperatorAuthority({
+      const authority = createTestOperatorAuthority({
         canonicalIdentity: null,
         profileId: profile.id,
         scopes: ["operator.sessions.read"],

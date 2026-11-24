@@ -1,5 +1,5 @@
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
+import { createTestOperatorAuthority } from "../agents/admitted-run-context.test-support.js";
 import { createAgentRunRestartAbortError } from "../agents/run-termination.js";
 import { createQueueTestRun } from "../auto-reply/reply/queue.test-helpers.js";
 import { scheduleFollowupDrain } from "../auto-reply/reply/queue/drain.js";
@@ -139,7 +139,7 @@ describe("controller mailbox scheduling", () => {
       source("owner after"),
     ];
     const ceiling = { kind: "send" as const, profileId: "guest", sessionKey: key };
-    const authority = createAdmittedRunOperatorAuthority({
+    const authority = createTestOperatorAuthority({
       canonicalIdentity: null,
       profileId: "guest",
       scopes: [],

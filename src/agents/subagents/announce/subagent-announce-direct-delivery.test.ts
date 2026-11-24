@@ -31,10 +31,8 @@ import {
 } from "../../../sessions/session-controller.mailbox.js";
 import { createReplyOperation } from "../../../sessions/session-controller.operation.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
-import {
-  createAdmittedRunOperatorAuthority,
-  type AdmittedRunOperatorAuthority,
-} from "../../admitted-run-context.js";
+import type { AdmittedRunOperatorAuthority } from "../../admitted-run-context.js";
+import { createTestOperatorAuthority } from "../../admitted-run-context.test-support.js";
 import * as embeddedRuns from "../../embedded-agent-runner/runs.js";
 import { taskCompletionEvents } from "../../subagent-test-fixtures.test-helpers.js";
 import { deliverSubagentAnnouncement, testing } from "./subagent-announce-delivery.test-support.js";
@@ -481,7 +479,7 @@ it("queues participant completion as a capped new turn instead of steering an ac
       root: "/synthetic/root",
     },
   };
-  const operatorAuthority = createAdmittedRunOperatorAuthority({
+  const operatorAuthority = createTestOperatorAuthority({
     canonicalIdentity: null,
     profileId: ceiling.profileId,
     scopes: ["operator.write"],

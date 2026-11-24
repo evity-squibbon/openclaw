@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createAdmittedRunOperatorAuthority } from "../agents/admitted-run-context.js";
+import { createTestOperatorAuthority } from "../agents/admitted-run-context.test-support.js";
 import { captureScheduledOperatorSource } from "../agents/operator-run-recovery-source.js";
 import type { BoundParticipationCeiling } from "../agents/participation-ceiling.js";
 import { createTestCronOperatorSource } from "../cron/execution-context.test-support.js";
@@ -170,7 +170,7 @@ describe("shared operator recovery dialect", () => {
 
   it("never downgrades unavailable or oversized participant scheduling to source-less work", () => {
     for (const recoverySnapshot of [undefined, ordinary]) {
-      const authority = createAdmittedRunOperatorAuthority({
+      const authority = createTestOperatorAuthority({
         canonicalIdentity: null,
         profileId: "operator",
         scopes: ["operator.admin"],
@@ -182,7 +182,7 @@ describe("shared operator recovery dialect", () => {
         captureScheduledOperatorSource({ authority, agentId: "main", sourceRunId: "run" }),
       ).toThrow(/retained/);
     }
-    const authority = createAdmittedRunOperatorAuthority({
+    const authority = createTestOperatorAuthority({
       canonicalIdentity: null,
       profileId: "operator",
       scopes: ["operator.admin"],
