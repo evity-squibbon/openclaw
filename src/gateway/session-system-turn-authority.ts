@@ -5,10 +5,8 @@ import type { QueuedOperatorRecoverySource } from "./operator-run-recovery-sourc
 import { captureQueuedOperatorRecoverySource } from "./operator-run-recovery-source.js";
 import { restoreGatewayQueuedOperatorRecovery } from "./operator-run-recovery.js";
 import { prepareSessionDelegatedOperatorAuthority } from "./session-delegated-operator-source.js";
-import {
-  prepareSessionPrincipalRunAuthority,
-  resolveSessionSystemTurnProfileId,
-} from "./session-principal-run-authority.js";
+import { resolveSessionSystemTurnProfileId } from "./session-principal-run-authority.js";
+import { prepareSessionPrincipalRunAuthority } from "./session-sharing-authorization-async.js";
 
 /** Capture the interrupted execution's source, never a later steering participant. */
 export function captureSessionRestartOperatorSource(

@@ -1,6 +1,6 @@
 # Participate split, part 2 of 6: participant limits on admitted runs.
 # Measured with check-test-lines-ratchet against main after part 1 landed.
-# This layer adds 3,331 net test lines; 2,931 exceed the ordinary allowance.
+# This layer adds 3,425 net test lines; 3,025 exceed the ordinary allowance.
 # The cases cover separate authority boundaries that a helper-only test cannot
 # prove: the participation ceiling and its tool/permission/exec intersections,
 # source capture and revocation across storage reopen, queued-input custody and
@@ -12,4 +12,4 @@
 # cron sources written before this change still recover unchanged.
 # Existing Gateway, cron, session-store and context-engine fixtures are reused.
 # No assertion, timeout, runtime or production-code limit is exempted.
-2931
+3025

@@ -3,6 +3,7 @@ import { ErrorCodes, errorShape } from "../../packages/gateway-protocol/src/inde
 import { GATEWAY_OWNER_PROFILE_ID } from "../../packages/gateway-protocol/src/schema/users.js";
 import {
   assertAdmittedRunOperatorAuthority,
+  createAdmittedRunOperatorAuthority,
   type AdmittedRunOperatorAuthority,
 } from "../agents/admitted-run-context.js";
 import { AgentSelectionRequiredError } from "../agents/agent-scope-config.js";
@@ -35,6 +36,7 @@ import { errorShapeFromError } from "./error-shape.js";
 import { resolveGatewayOperatorAccessAuthority } from "./operator-access-policy.js";
 import { isOperatorRoleEnforcedFor, operatorRoleSubject } from "./operator-role-enforcement.js";
 import { resolveOperatorRolePolicyForAssignment } from "./operator-role-policy.js";
+import { prepareGatewayOperatorRunAuthority } from "./operator-run-authority.js";
 import type { GatewayClient, GatewayRequestContext } from "./server-methods/shared-types.js";
 import { prepareSessionDelegatedOperatorAuthority } from "./session-delegated-operator-source.js";
 import { sessionMethodDatabaseAdmission, isSessionTargetMethod } from "./session-method-policy.js";
@@ -61,6 +63,42 @@ import {
 } from "./session-sharing-target-input.js";
 import { resolveSessionMutationAuthorization } from "./session-sharing.js";
 import { prepareTalkSessionTarget } from "./talk/session-target.js";
+
+/** Admit a new input as a recorded person using only that person's current grants. */
+export async function prepareSessionPrincipalRunAuthority(
+  params: Omit<Parameters<typeof prepareSessionPrincipalRunAccess>[0], "participationCeiling">,
+): Promise<{ authority: AdmittedRunOperatorAuthority; release: () => void }> {
+  const source = await prepareSessionPrincipalRunAccess(params);
+  const original = source.recordedOperatorAuthority;
+  if (original) {
+    return {
+      authority: createAdmittedRunOperatorAuthority({
+        ...original,
+        signal: source.signal,
+      }),
+      release: source.release,
+    };
+  }
+  let admitted: Awaited<ReturnType<typeof prepareGatewayOperatorRunAuthority>>;
+  try {
+    admitted = await prepareGatewayOperatorRunAuthority({
+      client: source.client,
+      context: params.context,
+      sourceAuthority: source,
+    });
+    if (!admitted) {
+      throw new Error("Session principal has no current run authority.");
+    }
+    return admitted;
+  } catch (error) {
+    if (admitted) {
+      admitted.release();
+    } else {
+      source.release();
+    }
+    throw error;
+  }
+}
 
 /** Resolve a recorded person against current grants and an existing exact session. */
 export async function prepareSessionPrincipalRunAccess(params: {
